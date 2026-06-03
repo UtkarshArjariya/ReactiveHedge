@@ -1,0 +1,33 @@
+[profile.default]
+# Tech stack pinned by CLAUDE.md — do not change without asking.
+solc_version = "0.8.26"
+evm_version  = "cancun"
+via_ir       = true
+optimizer    = true
+optimizer_runs = 200
+bytecode_hash = "none"
+
+src  = "src"
+out  = "out"
+test = "test"
+libs = ["lib"]
+
+# Hook fork tests + snapshot diffing need fs + ffi.
+ffi = true
+fs_permissions = [{ access = "read-write", path = ".forge-snapshots/" }]
+
+[profile.default.fuzz]
+runs = 256
+
+# Profile used in CI / offline: skips fork tests (see test tags).
+[profile.ci]
+verbosity = 3
+
+[rpc_endpoints]
+unichain_sepolia = "${UNICHAIN_SEPOLIA_RPC_URL}"
+base_sepolia     = "${BASE_SEPOLIA_RPC_URL}"
+reactive_lasna   = "${REACTIVE_LASNA_RPC_URL}"
+
+[etherscan]
+unichain_sepolia = { key = "${ETHERSCAN_API_KEY}", chain = 1301 }
+base_sepolia     = { key = "${ETHERSCAN_API_KEY}", chain = 84532 }
