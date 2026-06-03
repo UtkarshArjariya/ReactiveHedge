@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ReactiveHedge — Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* Each chain gets its own color — color encodes WHICH CHAIN, not decoration */
+    --origin:   #FF5CAA;   /* Unichain / Uniswap v4 — the pool */
+    --reactive: #38E1FF;   /* Reactive Network — the signal layer */
+    --dest:     #FFB454;   /* Base / hedge venue — the destination */
+    --ink:      #0B1220;   /* deep base */
+    --panel:    #131C2E;   /* surface */
+    --panel-2:  #1B2740;   /* raised surface */
+    --line:     #28324d;
+    --text:     #E6EDF7;
+    --muted:    #8093ad;
+    --faint:    #56688a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--ink);color:var(--text);
+    font-family:"Space Grotesk",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  body{padding:clamp(20px,5vw,64px) clamp(16px,5vw,72px);line-height:1.5}
+  .mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+
+  /* ---------- header ---------- */
+  header{max-width:1080px;margin:0 auto 40px}
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--reactive);margin:0 0 14px}
+  h1{font-size:clamp(34px,6vw,68px);line-height:1.02;font-weight:700;margin:0 0 18px;
+    letter-spacing:-.02em}
+  h1 .hl{color:var(--origin)}
+  .lede{font-size:clamp(15px,2vw,19px);color:var(--muted);max-width:62ch;margin:0}
+  .lede b{color:var(--text);font-weight:600}
+
+  /* ---------- the signature: cross-chain pipeline ---------- */
+  .stage{max-width:1080px;margin:0 auto 56px;position:relative}
+  .rail{position:relative;display:grid;grid-template-columns:1fr 1fr 1fr;gap:clamp(14px,3vw,40px);
+    align-items:stretch}
+  .node{position:relative;background:linear-gradient(180deg,var(--panel-2),var(--panel));
+    border:1px solid var(--line);border-radius:16px;padding:22px 20px 20px;overflow:hidden}
+  .node::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;border-radius:16px 16px 0 0}
+  .node.origin::before{background:var(--origin)}
+  .node.reactive::before{background:var(--reactive)}
+  .node.dest::before{background:var(--dest)}
+  .node .tag{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--faint)}
+  .node .chain{font-family:"IBM Plex Mono",monospace;font-size:12px;margin-top:2px}
+  .node.origin .chain{color:var(--origin)}
+  .node.reactive .chain{color:var(--reactive)}
+  .node.dest .chain{color:var(--dest)}
+  .node h3{font-size:19px;margin:14px 0 8px;font-weight:600;letter-spacing:-.01em}
+  .node p{margin:0;font-size:13.5px;color:var(--muted)}
+  .node ul{margin:12px 0 0;padding:0;list-style:none;display:grid;gap:7px}
+  .node li{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--faint);
+    padding-left:14px;position:relative}
+  .node li::before{content:"›";position:absolute;left:0;color:currentColor;opacity:.8}
+  .node.origin li{color:#c98aae}.node.reactive li{color:#7fcfe0}.node.dest li{color:#d4a974}
+
+  /* the moving signal pulse */
+  .flow{position:relative;height:0}
+  .pulse-track{position:absolute;top:50%;left:0;right:0;height:2px;
+    background:linear-gradient(90deg,var(--origin),var(--reactive),var(--dest));
+    opacity:.28;transform:translateY(-50%)}
+  .pulse{position:absolute;top:50%;left:0;width:11px;height:11px;border-radius:50%;
+    background:var(--reactive);box-shadow:0 0 16px 3px var(--reactive);
+    transform:translate(-50%,-50%);animation:travel 4.6s cubic-bezier(.5,0,.5,1) infinite}
+  @keyframes travel{
+    0%   {left:8%;  background:var(--origin);  box-shadow:0 0 16px 3px var(--origin)}
+    42%  {left:50%; background:var(--reactive);box-shadow:0 0 18px 4px var(--reactive)}
+    84%,100%{left:92%;background:var(--dest);  box-shadow:0 0 16px 3px var(--dest)}
+  }
+  .step-label{position:absolute;top:calc(50% + 16px);transform:translateX(-50%);
+    font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.08em;
+    color:var(--faint);white-space:nowrap}
+
+  /* ---------- the loop note ---------- */
+  .loopback{max-width:1080px;margin:0 auto 56px;border:1px dashed var(--line);
+    border-radius:14px;padding:18px 22px;display:flex;gap:16px;align-items:flex-start;
+    background:rgba(56,225,255,.04)}
+  .loopback .k{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--reactive);white-space:nowrap;padding-top:2px}
+  .loopback p{margin:0;font-size:14px;color:var(--muted)}
+  .loopback code{font-family:"IBM Plex Mono",monospace;color:var(--text);font-size:13px}
+
+  /* ---------- sequence ---------- */
+  .seq{max-width:1080px;margin:0 auto 56px}
+  .seq h2,.guard h2{font-size:13px;font-family:"IBM Plex Mono",monospace;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--faint);margin:0 0 22px;font-weight:500}
+  .steps{display:grid;gap:0}
+  .row{display:grid;grid-template-columns:46px 1fr;gap:18px;padding:16px 0;
+    border-top:1px solid var(--line)}
+  .row:last-child{border-bottom:1px solid var(--line)}
+  .num{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--reactive);padding-top:2px}
+  .row .what{font-size:15px;font-weight:500;margin:0 0 4px}
+  .row .how{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);margin:0}
+  .row .where{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:10.5px;
+    padding:2px 8px;border-radius:6px;margin-top:8px;letter-spacing:.06em}
+  .w-origin{color:var(--origin);background:rgba(255,92,170,.12)}
+  .w-react{color:var(--reactive);background:rgba(56,225,255,.12)}
+  .w-dest{color:var(--dest);background:rgba(255,180,84,.12)}
+
+  /* ---------- guard rails ---------- */
+  .guard{max-width:1080px;margin:0 auto 40px}
+  .guard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .card .gn{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--dest);
+    letter-spacing:.1em;text-transform:uppercase}
+  .card p{margin:8px 0 0;font-size:13.5px;color:var(--muted)}
+  .card p b{color:var(--text);font-weight:600}
+
+  footer{max-width:1080px;margin:0 auto;padding-top:28px;border-top:1px solid var(--line);
+    font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--faint);
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+
+  @media (max-width:760px){
+    .rail{grid-template-columns:1fr}
+    .pulse-track,.pulse,.step-label{display:none}
+    .node::after{content:"↓";position:absolute;bottom:-26px;left:50%;transform:translateX(-50%);
+      color:var(--faint)}
+    .node.dest::after{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .pulse{animation:none;left:50%}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <p class="eyebrow">Uniswap Hook Incubator · UHI9 · Impermanent Loss &amp; Yield</p>
+  <h1>Reactive<span class="hl">Hedge</span></h1>
+  <p class="lede">A Uniswap v4 hook that hedges impermanent loss <b>before the arbitrage lands</b>.
+  v4 hooks only run when the pool is touched — but IL accrues when the price moves
+  <i>elsewhere</i>. A Reactive Smart Contract watches that other venue and fires a cross-chain
+  callback into the hook within seconds.</p>
+</header>
+
+<!-- SIGNATURE: the three-chain pipeline with a traveling signal -->
+<section class="stage" aria-label="Cross-chain architecture">
+  <div class="rail">
+    <div class="node origin">
+      <span class="tag">Origin</span>
+      <div class="chain">Unichain Sepolia · 1301</div>
+      <h3>ReactiveHedgeHook</h3>
+      <p>The Uniswap v4 hook. Tracks each LP's delta exposure and broadcasts price moves.</p>
+      <ul>
+        <li>afterAddLiquidity</li>
+        <li>afterRemoveLiquidity</li>
+        <li>afterSwap → emits SwapObserved</li>
+        <li>onReactiveRebalance ← callback</li>
+      </ul>
+    </div>
+
+    <div class="node reactive">
+      <span class="tag">Signal layer</span>
+      <div class="chain">Reactive Lasna · 5318007</div>
+      <h3>HedgeReactiveContract</h3>
+      <p>Subscribes to the hook's events, accumulates price drift, and triggers the hedge cross-chain.</p>
+      <ul>
+        <li>service.subscribe(...) if(!vm)</li>
+        <li>react(LogRecord) vmOnly</li>
+        <li>drift &gt; threshold → emit Callback</li>
+        <li>AbstractPayer pays gas</li>
+      </ul>
+    </div>
+
+    <div class="node dest">
+      <span class="tag">Destination</span>
+      <div class="chain">Base Sepolia · 84532</div>
+      <h3>HedgeExecutor</h3>
+      <p>Receives the validated callback and moves the hedge. Mock now; live perps later.</p>
+      <ul>
+        <li>require proxy + rvmId</li>
+        <li>netHedgePosition += delta</li>
+        <li>emit HedgeExecuted ★ demo</li>
+        <li>↔ Hyperliquid (post-MVP)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="flow" aria-hidden="true">
+    <div class="pulse-track"></div>
+    <div class="pulse"></div>
+    <div class="step-label" style="left:8%">event log</div>
+    <div class="step-label" style="left:50%">react()</div>
+    <div class="step-label" style="left:92%">callback</div>
+  </div>
+</section>
+
+<div class="loopback">
+  <span class="k">The loop</span>
+  <p>The callback can target the hook itself <code>(onReactiveRebalance on Unichain)</code> for an
+  in-pool rebalance, or the executor <code>(on Base)</code> for an external hedge. The MVP demos the
+  external-hedge path because the cross-chain hop is the visible "wow." Same payload shape either way.</p>
+</div>
+
+<!-- SEQUENCE -->
+<section class="seq">
+  <h2>End-to-end sequence</h2>
+  <div class="steps">
+    <div class="row"><div class="num">01</div><div>
+      <p class="what">LP adds liquidity</p>
+      <p class="how">afterAddLiquidity records net delta · emits LiquidityAdded</p>
+      <span class="where w-origin">Unichain Sepolia</span></div></div>
+    <div class="row"><div class="num">02</div><div>
+      <p class="what">Price moves on the faster venue → a swap touches the pool</p>
+      <p class="how">afterSwap reads sqrtPriceX96 · emits SwapObserved(poolId, amt0, amt1, price)</p>
+      <span class="where w-origin">Unichain Sepolia</span></div></div>
+    <div class="row"><div class="num">03</div><div>
+      <p class="what">Reactive picks up the event log</p>
+      <p class="how">react() runs in the ReactVM · accumulates cumulative drift</p>
+      <span class="where w-react">Reactive Lasna</span></div></div>
+    <div class="row"><div class="num">04</div><div>
+      <p class="what">Drift crosses the threshold → fire</p>
+      <p class="how">emit Callback(dest, onReactiveRebalance, gas≥100k, abi(rvmId, poolId, hedgeDelta))</p>
+      <span class="where w-react">Reactive Lasna</span></div></div>
+    <div class="row"><div class="num">05</div><div>
+      <p class="what">Callback proxy delivers cross-chain</p>
+      <p class="how">require(msg.sender==proxy &amp;&amp; rvmId==AUTHORIZED) · update hedge</p>
+      <span class="where w-dest">Base Sepolia</span></div></div>
+    <div class="row"><div class="num">06</div><div>
+      <p class="what">Hedge moves — the hero moment</p>
+      <p class="how">netHedgePosition += hedgeDelta · emit HedgeExecuted · Reactscan shows the tx</p>
+      <span class="where w-dest">Base Sepolia</span></div></div>
+  </div>
+</section>
+
+<!-- GUARD RAILS -->
+<section class="guard">
+  <h2>Non-negotiable guard rails</h2>
+  <div class="guard-grid">
+    <div class="card"><div class="gn">Address flags</div>
+      <p><b>getHookPermissions() must match the mined salt.</b> Change the active callbacks in both
+      the hook and the HookMiner call, or deployment reverts.</p></div>
+    <div class="card"><div class="gn">Callback auth</div>
+      <p><b>Validate proxy + RVM id on every callback.</b> Reactive injects the RVM id as the first
+      address arg — check it, or anyone can spoof a hedge.</p></div>
+    <div class="card"><div class="gn">Dual instance</div>
+      <p><b>subscribe under if(!vm); react under vmOnly.</b> The RSC runs as two instances; mixing
+      them silently breaks subscriptions.</p></div>
+    <div class="card"><div class="gn">Same realm</div>
+      <p><b>Never mix mainnet and testnet.</b> Origin and destination must both be testnet here:
+      Unichain Sepolia, Base Sepolia, Lasna.</p></div>
+    <div class="card"><div class="gn">Fund the RSC</div>
+      <p><b>An underfunded RSC gets blocklisted.</b> Deposit REACT after deploy; callbacks ≥ 100k gas,
+      ≤ 900k RVM gas.</p></div>
+    <div class="card"><div class="gn">Reorg aware</div>
+      <p><b>Callbacks can fire before origin finality.</b> Keep hedge updates idempotent / reversible;
+      don't assume the origin event is final.</p></div>
+  </div>
+</section>
+
+<footer>
+  <span>ReactiveHedge · architecture v1</span>
+  <span>origin → reactive → destination · hedge before the arb</span>
+</footer>
+
+</body>
+</html>
