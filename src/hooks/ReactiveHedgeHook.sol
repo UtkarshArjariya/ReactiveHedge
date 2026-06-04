@@ -103,12 +103,16 @@ contract ReactiveHedgeHook is BaseHook, IReactiveHedgeHook {
 
     function _afterSwap(
         address, /*sender*/
-        PoolKey calldata, /*key*/
+        PoolKey calldata key,
         IPoolManager.SwapParams calldata, /*params*/
-        BalanceDelta, /*delta*/
+        BalanceDelta delta,
         bytes calldata /*hookData*/
     ) internal override returns (bytes4, int128) {
-        // TODO(Phase 1): read sqrtPriceX96 from the PoolManager and emit SwapObserved.
+        PoolId id = key.toId();
+        // Read the post-swap price straight from the PoolManager — this is the
+        // signal the RSC subscribes to (FR-4).
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(id);
+        emit SwapObserved(PoolId.unwrap(id), int256(delta.amount0()), int256(delta.amount1()), sqrtPriceX96);
         return (IHooks.afterSwap.selector, int128(0));
     }
 
