@@ -68,10 +68,22 @@ contract HedgeReactiveContract is AbstractReactive {
     }
 
     /// @notice Reactive entry point — runs in the ReactVM on each matched event.
-    /// @dev Phase 1 fires a callback on any SwapObserved; Phase 2 accumulates
-    ///      drift and only fires past {driftThreshold}.
-    function react(LogRecord calldata /*log*/ ) external vmOnly {
-        // TODO(Phase 1): decode SwapObserved and emit a Callback to the executor.
-        // TODO(Phase 2): accumulate cumulativeDrift; fire only past threshold.
+    /// @dev Phase 1 fires a callback on any SwapObserved to prove the rails;
+    ///      Phase 2 will accumulate drift and only fire past {driftThreshold}.
+    function react(LogRecord calldata log) external vmOnly {
+        // SwapObserved(bytes32 indexed poolId, int256 amount0, int256 amount1, uint160 sqrtPriceX96)
+        bytes32 poolId = bytes32(log.topic_1);
+
+        // Phase 1: a fixed dummy hedge delta — Phase 2 replaces this with a
+        // delta derived from accumulated price drift.
+        int256 hedgeDelta = 1e18;
+
+        bytes memory payload = abi.encodeWithSignature(
+            "onReactiveRebalance(address,bytes32,int256)",
+            address(0), // rvm id placeholder — Reactive overwrites with the real id
+            poolId,
+            hedgeDelta
+        );
+        emit Callback(destinationChainId, executor, callbackGasLimit, payload);
     }
 }
