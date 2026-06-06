@@ -41,6 +41,11 @@ contract ReactiveHedgeHook is BaseHook, IReactiveHedgeHook {
     /// @notice Net recorded delta intent per pool from applied rebalances.
     mapping(PoolId => int256) public hedgeIntent;
 
+    /// @notice Per-LP signed token0 exposure for a pool (FR-2/FR-3).
+    mapping(PoolId => mapping(address => int256)) public lpExposure0;
+    /// @notice Per-LP signed token1 exposure for a pool (FR-2/FR-3).
+    mapping(PoolId => mapping(address => int256)) public lpExposure1;
+
     constructor(IPoolManager _poolManager, address _callbackProxy, address _authorizedRvmId)
         BaseHook(_poolManager)
     {
@@ -78,26 +83,40 @@ contract ReactiveHedgeHook is BaseHook, IReactiveHedgeHook {
     // ── hook callbacks ────────────────────────────────────────────────────────
 
     function _afterAddLiquidity(
-        address, /*sender*/
-        PoolKey calldata, /*key*/
+        address sender,
+        PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata, /*params*/
-        BalanceDelta, /*delta*/
+        BalanceDelta delta,
         BalanceDelta, /*feesAccrued*/
         bytes calldata /*hookData*/
     ) internal override returns (bytes4, BalanceDelta) {
-        // TODO(Phase 2): record per-LP net delta and emit LiquidityAdded.
+        // The caller's balance delta is negative when adding (tokens go to the
+        // pool), so the position's exposure increases by the negation.
+        PoolId id = key.toId();
+        int256 d0 = -int256(delta.amount0());
+        int256 d1 = -int256(delta.amount1());
+        lpExposure0[id][sender] += d0;
+        lpExposure1[id][sender] += d1;
+        emit LiquidityAdded(PoolId.unwrap(id), sender, d0, d1);
         return (IHooks.afterAddLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 
     function _afterRemoveLiquidity(
-        address, /*sender*/
-        PoolKey calldata, /*key*/
+        address sender,
+        PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata, /*params*/
-        BalanceDelta, /*delta*/
+        BalanceDelta delta,
         BalanceDelta, /*feesAccrued*/
         bytes calldata /*hookData*/
     ) internal override returns (bytes4, BalanceDelta) {
-        // TODO(Phase 2): decrement per-LP net delta and emit LiquidityRemoved.
+        // On removal the caller receives tokens (positive delta), so exposure
+        // decreases by that amount.
+        PoolId id = key.toId();
+        int256 d0 = -int256(delta.amount0());
+        int256 d1 = -int256(delta.amount1());
+        lpExposure0[id][sender] += d0;
+        lpExposure1[id][sender] += d1;
+        emit LiquidityRemoved(PoolId.unwrap(id), sender, d0, d1);
         return (IHooks.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 
@@ -122,6 +141,10 @@ contract ReactiveHedgeHook is BaseHook, IReactiveHedgeHook {
     function onReactiveRebalance(address rvmId, bytes32 poolId, int256 hedgeDelta) external override {
         if (msg.sender != callbackProxy) revert NotCallbackProxy();
         if (rvmId != authorizedRvmId) revert UnauthorizedRvm();
-        // TODO(Phase 2): apply rebalance to hedge intent and emit RebalanceExecuted.
+        // MVP: record rebalance intent (does not move pool liquidity, FR-6).
+        PoolId id = PoolId.wrap(poolId);
+        int256 newIntent = hedgeIntent[id] + hedgeDelta;
+        hedgeIntent[id] = newIntent;
+        emit RebalanceExecuted(rvmId, poolId, hedgeDelta, newIntent);
     }
 }
