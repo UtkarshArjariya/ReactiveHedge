@@ -39,6 +39,14 @@ contract HedgeReactiveContract is AbstractReactive {
     /// @notice Number of hedge callbacks fired (demo / frontend convenience).
     uint256 public hedgesFired;
 
+    /// @notice Deployer; may top up or withdraw the RSC's REACT balance.
+    address public immutable owner;
+
+    /// @notice Emitted when the RSC is funded with REACT.
+    event Funded(address indexed from, uint256 amount);
+    /// @notice Emitted when the owner withdraws surplus REACT.
+    event Withdrawn(address indexed to, uint256 amount);
+
     /// @param _originChainId  EIP-155 id of the chain the hook is on.
     /// @param _hook           ReactiveHedgeHook address to subscribe to.
     /// @param _destChainId    EIP-155 id of the hedge destination chain.
@@ -59,6 +67,7 @@ contract HedgeReactiveContract is AbstractReactive {
         executor = _executor;
         callbackGasLimit = _callbackGas;
         driftThreshold = _driftThreshold;
+        owner = msg.sender;
 
         // Subscribe only on the Reactive-Network instance (hard rule #3).
         if (!vm) {
@@ -114,5 +123,31 @@ contract HedgeReactiveContract is AbstractReactive {
         unchecked {
             ++hedgesFired;
         }
+    }
+
+    // ── funding / refund (FR-11, hard rule #6) ─────────────────────────────────
+    //
+    // The RSC pays the callback proxy for cross-chain callbacks out of its own
+    // REACT balance (via the inherited AbstractPayer: receive()/pay()/coverDebt()).
+    // An underfunded RSC stops working and can be blocklisted, so keep it funded.
+    //
+    // Reorg safety (hard rule #7): Reactive does not wait for origin finality, so
+    // a callback can be emitted for a swap that later reorgs out. Hedge updates are
+    // therefore kept *reversible* — both the RSC's cumulativeDrift and the
+    // destination's netHedgePosition are signed accumulators, so a subsequent
+    // opposite-direction observation naturally unwinds an over-hedge rather than
+    // wedging state. No irreversible side effects are taken on a single callback.
+
+    /// @notice Explicitly top up the RSC's REACT balance.
+    function fund() external payable {
+        emit Funded(msg.sender, msg.value);
+    }
+
+    /// @notice Withdraw surplus REACT (owner only). Leaves the rest to pay callbacks.
+    /// @param amount Wei of REACT to withdraw to the owner.
+    function withdraw(uint256 amount) external {
+        require(msg.sender == owner, "only owner");
+        _pay(payable(owner), amount);
+        emit Withdrawn(owner, amount);
     }
 }
