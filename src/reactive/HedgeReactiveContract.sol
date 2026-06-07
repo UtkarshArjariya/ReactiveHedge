@@ -30,8 +30,14 @@ contract HedgeReactiveContract is AbstractReactive {
     /// @notice Cumulative drift (bps) at which a hedge fires, then resets.
     uint256 public immutable driftThreshold;
 
-    /// @notice Running cumulative drift accumulated in the ReactVM.
+    /// @notice Running cumulative drift (bps) accumulated in the ReactVM.
     uint256 public cumulativeDrift;
+
+    /// @notice Last observed sqrt price (Q64.96), updated every react (VM-side).
+    uint160 public lastSqrtPriceX96;
+
+    /// @notice Number of hedge callbacks fired (demo / frontend convenience).
+    uint256 public hedgesFired;
 
     /// @param _originChainId  EIP-155 id of the chain the hook is on.
     /// @param _hook           ReactiveHedgeHook address to subscribe to.
@@ -68,15 +74,32 @@ contract HedgeReactiveContract is AbstractReactive {
     }
 
     /// @notice Reactive entry point — runs in the ReactVM on each matched event.
-    /// @dev Phase 1 fires a callback on any SwapObserved to prove the rails;
-    ///      Phase 2 will accumulate drift and only fire past {driftThreshold}.
+    /// @dev Accumulates step-to-step price drift (bps) and fires a hedge callback
+    ///      only once cumulative drift crosses {driftThreshold}, then resets. The
+    ///      hedge opposes the most recent move and is sized to accumulated drift
+    ///      (MVP heuristic; a production build would size from per-LP netDelta).
     function react(LogRecord calldata log) external vmOnly {
         // SwapObserved(bytes32 indexed poolId, int256 amount0, int256 amount1, uint160 sqrtPriceX96)
         bytes32 poolId = bytes32(log.topic_1);
+        (,, uint160 sqrtPriceX96) = abi.decode(log.data, (int256, int256, uint160));
 
-        // Phase 1: a fixed dummy hedge delta — Phase 2 replaces this with a
-        // delta derived from accumulated price drift.
-        int256 hedgeDelta = 1e18;
+        uint160 last = lastSqrtPriceX96;
+        lastSqrtPriceX96 = sqrtPriceX96;
+
+        // First observation establishes the baseline; nothing to hedge yet.
+        if (last == 0) return;
+
+        // Signed sqrt-price move in bps relative to the last observation.
+        int256 stepBps = ((int256(uint256(sqrtPriceX96)) - int256(uint256(last))) * 10_000) / int256(uint256(last));
+        uint256 absStep = stepBps >= 0 ? uint256(stepBps) : uint256(-stepBps);
+        cumulativeDrift += absStep;
+
+        if (cumulativeDrift < driftThreshold) return;
+
+        // Threshold crossed — size the hedge to accumulated drift, opposing the
+        // latest move (price up => short, price down => long). bps -> WAD: *1e14.
+        int256 magnitude = int256(cumulativeDrift) * 1e14;
+        int256 hedgeDelta = stepBps >= 0 ? -magnitude : magnitude;
 
         bytes memory payload = abi.encodeWithSignature(
             "onReactiveRebalance(address,bytes32,int256)",
@@ -85,5 +108,11 @@ contract HedgeReactiveContract is AbstractReactive {
             hedgeDelta
         );
         emit Callback(destinationChainId, executor, callbackGasLimit, payload);
+
+        // Reset the accumulator (FR-10).
+        cumulativeDrift = 0;
+        unchecked {
+            ++hedgesFired;
+        }
     }
 }
