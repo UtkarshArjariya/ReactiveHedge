@@ -89,6 +89,31 @@ contract HedgeReactiveContractTest is Test {
         rnInstance.react(_log(1e9));
     }
 
+    // ── funding / refund (FR-11) ───────────────────────────────────────────────
+
+    receive() external payable {} // owner must be able to receive on withdraw
+
+    function test_Fund_IncreasesBalance() public {
+        vm.deal(address(this), 1 ether);
+        rsc.fund{value: 1 ether}();
+        assertEq(address(rsc).balance, 1 ether, "RSC funded");
+    }
+
+    function test_Withdraw_OwnerOnly() public {
+        vm.deal(address(this), 1 ether);
+        rsc.fund{value: 1 ether}();
+        rsc.withdraw(0.4 ether);
+        assertEq(address(rsc).balance, 0.6 ether, "surplus withdrawn");
+    }
+
+    function test_RevertWhen_WithdrawNotOwner() public {
+        vm.deal(address(this), 1 ether);
+        rsc.fund{value: 1 ether}();
+        vm.prank(makeAddr("notOwner"));
+        vm.expectRevert(bytes("only owner"));
+        rsc.withdraw(0.1 ether);
+    }
+
     function _log(uint160 sqrtPriceX96) internal view returns (IReactive.LogRecord memory log) {
         log = IReactive.LogRecord({
             chain_id: ORIGIN_CHAIN,
