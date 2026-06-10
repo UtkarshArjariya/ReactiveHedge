@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="460" viewBox="0 0 880 460" font-family="Space Grotesk, system-ui, sans-serif">
+  <rect width="880" height="460" fill="#0b1220" rx="16"/>
+  <text x="56" y="34" fill="#e6edf7" font-size="18" font-weight="700">Impermanent loss — unhedged vs ReactiveHedge</text>
+  <text x="56" y="54" fill="#8093ad" font-size="12" font-family="IBM Plex Mono, monospace">ETH/USDC · 30 days · rebalance threshold 100 bps</text>
+  <line x1="56" y1="404" x2="824" y2="404" stroke="#28324d" stroke-width="1"/>
+  <text x="46" y="408" fill="#56688a" font-size="11" text-anchor="end" font-family="IBM Plex Mono, monospace">0.00%</text>
+<line x1="56" y1="317" x2="824" y2="317" stroke="#28324d" stroke-width="1"/>
+  <text x="46" y="321" fill="#56688a" font-size="11" text-anchor="end" font-family="IBM Plex Mono, monospace">0.56%</text>
+<line x1="56" y1="230" x2="824" y2="230" stroke="#28324d" stroke-width="1"/>
+  <text x="46" y="234" fill="#56688a" font-size="11" text-anchor="end" font-family="IBM Plex Mono, monospace">1.12%</text>
+<line x1="56" y1="143" x2="824" y2="143" stroke="#28324d" stroke-width="1"/>
+  <text x="46" y="147" fill="#56688a" font-size="11" text-anchor="end" font-family="IBM Plex Mono, monospace">1.68%</text>
+<line x1="56" y1="56" x2="824" y2="56" stroke="#28324d" stroke-width="1"/>
+  <text x="46" y="60" fill="#56688a" font-size="11" text-anchor="end" font-family="IBM Plex Mono, monospace">2.24%</text>
+  <path d="M56.0,404.0 L81.6,404.0 L107.2,404.0 L132.8,402.4 L158.4,396.2 L184.0,400.9 L209.6,386.9 L235.2,371.4 L260.8,377.6 L286.4,358.9 L312.0,331.0 L337.6,340.3 L363.2,309.2 L388.8,292.1 L414.4,271.9 L440.0,284.4 L465.6,245.5 L491.2,217.6 L516.8,231.6 L542.4,188.1 L568.0,202.0 L593.6,157.0 L619.2,124.4 L644.8,139.9 L670.4,172.5 L696.0,130.6 L721.6,90.2 L747.2,97.9 L772.8,73.1 L798.4,56.0 L824.0,90.2" fill="none" stroke="#ff5caa" stroke-width="2.5"/>
+  <path d="M56.0,404.0 L81.6,404.0 L107.2,404.0 L132.8,400.9 L158.4,400.9 L184.0,400.9 L209.6,397.8 L235.2,396.2 L260.8,396.2 L286.4,394.7 L312.0,391.6 L337.6,391.6 L363.2,388.5 L388.8,388.5 L414.4,388.5 L440.0,388.5 L465.6,386.9 L491.2,386.9 L516.8,386.9 L542.4,385.4 L568.0,385.4 L593.6,383.8 L619.2,383.8 L644.8,383.8 L670.4,383.8 L696.0,382.3 L721.6,382.3 L747.2,382.3 L772.8,382.3 L798.4,382.3 L824.0,382.3" fill="none" stroke="#38e1ff" stroke-width="2.5"/>
+  <text x="824" y="82.17857142857144" fill="#ff5caa" font-size="12" text-anchor="end" font-family="IBM Plex Mono, monospace">unhedged 2.02%</text>
+  <text x="824" y="374.25" fill="#38e1ff" font-size="12" text-anchor="end" font-family="IBM Plex Mono, monospace">hedged 0.14%</text>
+  <text x="56" y="444" fill="#56688a" font-size="11" font-family="IBM Plex Mono, monospace">day 0</text>
+  <text x="824" y="444" fill="#56688a" font-size="11" text-anchor="end" font-family="IBM Plex Mono, monospace">day 30</text>
+  <text x="440" y="444" fill="#ffb454" font-size="13" text-anchor="middle" font-weight="600">ReactiveHedge reduces IL by 93% over the period</text>
+</svg>
