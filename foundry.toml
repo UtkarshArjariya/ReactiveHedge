@@ -14,7 +14,10 @@ libs = ["lib"]
 
 # Hook fork tests + snapshot diffing need fs + ffi.
 ffi = true
-fs_permissions = [{ access = "read-write", path = ".forge-snapshots/" }]
+fs_permissions = [
+  { access = "read-write", path = ".forge-snapshots/" },
+  { access = "read-write", path = "./backtest" },
+]
 
 [profile.default.fuzz]
 runs = 256
