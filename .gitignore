@@ -22,3 +22,5 @@ frontend/node_modules/
 docs/
 .DS_Store
 *.log
+.vscode/
+.idea/
