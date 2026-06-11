@@ -1,26 +1,27 @@
-# Secrets — never commit. Use a fresh dev wallet only.
+# ── Next.js (root app: frontend + backend) ──────────────────────────────────
+/node_modules/
+/.next/
+/out/
+/build/
+next-env.d.ts
+*.tsbuildinfo
+
+# Secrets — never commit. Fresh dev wallet only, testnet only.
 .env
 .env.local
+.env*.local
 
-# Foundry build artifacts
-out/
-cache/
-.forge-snapshots/
+# ── Foundry (contracts/) ─────────────────────────────────────────────────────
+contracts/out/
+contracts/cache/
+contracts/.forge-snapshots/
+!contracts/broadcast
+contracts/broadcast/*/31337/
+contracts/broadcast/**/dry-run/
 
-# Broadcast logs (keep the dir, drop the run logs)
-!/broadcast
-/broadcast/*/31337/
-/broadcast/**/dry-run/
-
-# Node / frontend
-node_modules/
-frontend/.next/
-frontend/out/
-frontend/node_modules/
-
-# Misc
-docs/
-.DS_Store
-*.log
+# ── Editors / OS ─────────────────────────────────────────────────────────────
 .vscode/
 .idea/
+.DS_Store
+*.log
+docs/
