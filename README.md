@@ -64,6 +64,12 @@ The browser never calls an RPC directly — the `app/api/*` route handlers do al
 chain reads server-side (no CORS, optional private RPC via `RPC_*` env). The only
 client-side write is the wallet-driven "push external price" demo control.
 
+> **Editor note.** Foundry config lives in `contracts/` (`foundry.toml`,
+> `remappings.txt`). The root `remappings.txt` is a copy with `contracts/`-prefixed
+> paths so a Solidity extension opened at the repo root can resolve imports — `forge`
+> itself only ever uses `contracts/remappings.txt`. For the best experience, open the
+> `contracts/` folder in your editor.
+
 ## Prerequisites
 
 - [Foundry](https://book.getfoundry.sh/) (stable) — `forge 1.x`

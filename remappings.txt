@@ -1,0 +1,7 @@
+forge-std/=contracts/lib/forge-std/src/
+v4-core/=contracts/lib/v4-core/
+@uniswap/v4-core/=contracts/lib/v4-core/
+v4-periphery/=contracts/lib/v4-periphery/
+@uniswap/v4-periphery/=contracts/lib/v4-periphery/
+reactive-lib/=contracts/lib/reactive-lib/
+@reactive/=contracts/lib/reactive-lib/
