@@ -1,215 +1,246 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createWalletClient, custom, formatEther, type Hex } from "viem";
-import {
-  config, isConfigured, unichainClient, baseClient, reactiveClient, chainMeta,
-} from "../lib/config";
-import { hookAbi, rscAbi, executorAbi, swapRouterAbi } from "../lib/abis";
+import { createWalletClient, custom, formatEther } from "viem";
+import { config, canSwap, chainMeta } from "../lib/config";
+import { swapRouterAbi } from "../lib/abis";
 import { unichainSepolia } from "../lib/chains";
+import SignalFlow from "./SignalFlow";
 
 declare global {
   interface Window { ethereum?: any }
 }
 
 type Kind = "origin" | "reactive" | "dest";
-type FeedItem = { id: string; t: number; chain: Kind; name: string; detail: string; tx?: string };
-
-type Stats = {
-  drift: bigint; threshold: bigint; hedgesFired: bigint;
-  hedgeIntent: bigint; netHedge: bigint; hedgeCount: bigint;
+type Feed = { id: string; chain: Kind; name: string; detail: string; tx?: string };
+type State = {
+  configured: boolean;
+  drift: number; threshold: number; hedgesFired: number;
+  hedgeIntent: number; netHedge: number; hedgeCount: number;
 };
-const ZERO: Stats = { drift: 0n, threshold: 0n, hedgesFired: 0n, hedgeIntent: 0n, netHedge: 0n, hedgeCount: 0n };
+const Z: State = { configured: false, drift: 0, threshold: 50, hedgesFired: 0, hedgeIntent: 0, netHedge: 0, hedgeCount: 0 };
 
-const wad = (x: bigint) => Number(formatEther(x < 0n ? -x : x)) * (x < 0n ? -1 : 1);
+const wad = (s?: string) => (s ? Number(formatEther(BigInt(s))) : 0);
 const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
 
+/** Lightweight count-up for changing numbers. */
+function Roll({ value, dp = 0 }: { value: number; dp?: number }) {
+  const [shown, setShown] = useState(value);
+  const ref = useRef(value);
+  useEffect(() => {
+    const from = ref.current, to = value, start = performance.now(), dur = 600;
+    let raf = 0;
+    const tick = (t: number) => {
+      const k = Math.min(1, (t - start) / dur);
+      const e = 1 - Math.pow(1 - k, 3);
+      setShown(from + (to - from) * e);
+      if (k < 1) raf = requestAnimationFrame(tick);
+      else ref.current = to;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return <>{shown.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp })}</>;
+}
+
 export default function Dashboard() {
-  const [stats, setStats] = useState<Stats>(ZERO);
-  const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [s, setS] = useState<State>(Z);
+  const [feed, setFeed] = useState<Feed[]>([]);
+  const [bt, setBt] = useState({ unhedgedBps: 202, hedgedBps: 14, reduction: 93 });
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<string>("");
+  const [note, setNote] = useState("");
+  const [liveOk, setLiveOk] = useState(false);
   const seq = useRef(0);
 
-  const push = useCallback((chain: Kind, name: string, detail: string, tx?: string) => {
+  const pushFeed = useCallback((chain: Kind, name: string, detail: string, tx?: string) => {
     seq.current += 1;
-    const item: FeedItem = { id: `${Date.now()}-${seq.current}`, t: Date.now(), chain, name, detail, tx };
-    setFeed((f) => [item, ...f].slice(0, 40));
+    setFeed((f) => [{ id: `${Date.now()}-${seq.current}`, chain, name, detail, tx }, ...f].slice(0, 30));
   }, []);
 
-  // ── live reads (poll) ──────────────────────────────────────────────────────
+  // backtest headline (once)
   useEffect(() => {
-    if (!isConfigured) return;
+    fetch("/api/backtest")
+      .then((r) => r.json())
+      .then((d) => setBt({ unhedgedBps: d.unhedgedBps, hedgedBps: d.hedgedBps, reduction: d.reduction }))
+      .catch(() => {});
+  }, []);
+
+  // poll state + events
+  useEffect(() => {
     let alive = true;
-    const read = async () => {
+    const tick = async () => {
       try {
-        const [drift, threshold, hedgesFired] = await Promise.all([
-          reactiveClient.readContract({ address: config.rsc!, abi: rscAbi, functionName: "cumulativeDrift" }),
-          reactiveClient.readContract({ address: config.rsc!, abi: rscAbi, functionName: "driftThreshold" }),
-          reactiveClient.readContract({ address: config.rsc!, abi: rscAbi, functionName: "hedgesFired" }),
-        ]);
-        const [netHedge, hedgeCount] = await Promise.all([
-          baseClient.readContract({ address: config.executor!, abi: executorAbi, functionName: "netHedgePosition" }),
-          baseClient.readContract({ address: config.executor!, abi: executorAbi, functionName: "hedgeCount" }),
-        ]);
-        const hedgeIntent = await unichainClient.readContract({
-          address: config.hook!, abi: hookAbi, functionName: "hedgeIntent", args: [config.poolId as Hex],
-        });
-        if (alive) setStats({ drift, threshold, hedgesFired, hedgeIntent, netHedge, hedgeCount });
-      } catch (e) {
-        /* RPC hiccup — keep last good values */
+        const d = await (await fetch("/api/state", { cache: "no-store" })).json();
+        if (!alive) return;
+        if (d.configured && !d.error) {
+          setLiveOk(true);
+          setS({
+            configured: true,
+            drift: Number(d.drift), threshold: Number(d.threshold || 50), hedgesFired: Number(d.hedgesFired),
+            hedgeIntent: wad(d.hedgeIntent), netHedge: wad(d.netHedge), hedgeCount: Number(d.hedgeCount),
+          });
+        } else {
+          setLiveOk(false);
+          setS((p) => ({ ...p, configured: Boolean(d.configured) }));
+        }
+        const ev = await (await fetch("/api/events", { cache: "no-store" })).json();
+        if (alive && ev.configured && Array.isArray(ev.events) && ev.events.length) {
+          setFeed(
+            ev.events.slice(0, 30).map((e: any, i: number) => ({
+              id: `${e.tx}-${i}`, chain: e.chain, name: e.name, detail: e.detail, tx: e.tx,
+            })),
+          );
+        }
+      } catch {
+        if (alive) setLiveOk(false);
       }
     };
-    read();
-    const t = setInterval(read, 5000);
+    tick();
+    const t = setInterval(tick, 5000);
     return () => { alive = false; clearInterval(t); };
   }, []);
 
-  // ── live event subscriptions ───────────────────────────────────────────────
-  useEffect(() => {
-    if (!isConfigured) return;
-    const unwatchers: Array<() => void> = [];
-    unwatchers.push(
-      unichainClient.watchContractEvent({
-        address: config.hook!, abi: hookAbi, eventName: "SwapObserved",
-        onLogs: (logs) => logs.forEach((l: any) =>
-          push("origin", "SwapObserved", `price ${l.args.sqrtPriceX96?.toString().slice(0, 10)}…`, l.transactionHash)),
-      }),
-    );
-    unwatchers.push(
-      reactiveClient.watchContractEvent({
-        address: config.rsc!, abi: rscAbi, eventName: "Callback",
-        onLogs: (logs) => logs.forEach((l: any) =>
-          push("reactive", "Callback", `→ ${short(l.args._contract)} gas ${l.args.gas_limit}`, l.transactionHash)),
-      }),
-    );
-    unwatchers.push(
-      baseClient.watchContractEvent({
-        address: config.executor!, abi: executorAbi, eventName: "HedgeExecuted",
-        onLogs: (logs) => logs.forEach((l: any) =>
-          push("dest", "HedgeExecuted", `Δ ${wad(l.args.deltaApplied).toFixed(4)} → pos ${wad(l.args.newPosition).toFixed(4)}`, l.transactionHash)),
-      }),
-    );
-    return () => unwatchers.forEach((u) => u());
-  }, [push]);
-
-  // ── demo control: push external price (FR-23) ───────────────────────────────
   const pushPrice = useCallback(async () => {
-    setBusy(true);
-    setNote("");
+    setBusy(true); setNote("");
     try {
-      if (!isConfigured || !config.swapRouter || !config.currency0 || !config.currency1 || !window.ethereum) {
-        // Demo mode — animate the pipeline so the UI tells the story offline.
-        push("origin", "SwapObserved", "demo: simulated price move", undefined);
-        setTimeout(() => push("reactive", "Callback", "demo: drift > threshold → fire", undefined), 1200);
-        setTimeout(() => push("dest", "HedgeExecuted", "demo: hedge rebalanced", undefined), 2600);
-        setNote(isConfigured ? "Connect a wallet to send a real swap." : "Demo mode — set contract addresses in .env.local for live mode.");
+      if (!canSwap || !window.ethereum) {
+        pushFeed("origin", "SwapObserved", "demo · simulated price move");
+        setTimeout(() => pushFeed("reactive", "Callback", "demo · drift > threshold → fire"), 1100);
+        setTimeout(() => pushFeed("dest", "HedgeExecuted", "demo · hedge rebalanced on Base"), 2400);
+        setNote(canSwap ? "Connect a wallet to send a real swap." : "Demo mode — set NEXT_PUBLIC_* addresses for live mode.");
         return;
       }
       const wallet = createWalletClient({ chain: unichainSepolia, transport: custom(window.ethereum) });
       const [account] = await wallet.requestAddresses();
-      // Approve then swap a small exact-input amount, moving the pool price.
       await wallet.writeContract({
-        account, address: config.currency0, abi: swapRouterAbi, functionName: "approve",
-        args: [config.swapRouter, 2n ** 255n],
+        account, address: config.currency0!, abi: swapRouterAbi, functionName: "approve",
+        args: [config.swapRouter!, 2n ** 255n],
       });
-      const key = {
-        currency0: config.currency0, currency1: config.currency1,
-        fee: 3000, tickSpacing: 60, hooks: config.hook!,
-      };
+      const key = { currency0: config.currency0!, currency1: config.currency1!, fee: 3000, tickSpacing: 60, hooks: config.hook! };
       const params = { zeroForOne: true, amountSpecified: -1_000_000_000_000_000n, sqrtPriceLimitX96: 4295128740n };
       const tx = await wallet.writeContract({
-        account, address: config.swapRouter, abi: swapRouterAbi, functionName: "swap",
+        account, address: config.swapRouter!, abi: swapRouterAbi, functionName: "swap",
         args: [key, params, { takeClaims: false, settleUsingBurn: false }, "0x"],
       });
-      push("origin", "swap()", `sent ${short(tx)}`, tx);
-      setNote("Swap sent. Watch the feed — the hedge should land on Base within seconds.");
+      pushFeed("origin", "swap()", `sent ${short(tx)}`, tx);
+      setNote("Swap sent — watch the hedge land on Base within seconds.");
     } catch (e: any) {
       setNote(e?.shortMessage || e?.message || "Transaction rejected.");
     } finally {
       setBusy(false);
     }
-  }, [push]);
+  }, [pushFeed]);
 
-  const driftPct = stats.threshold > 0n ? Math.min(100, Number((stats.drift * 100n) / stats.threshold)) : 0;
+  const gauge = s.threshold > 0 ? Math.min(100, (s.drift / s.threshold) * 100) : 0;
+  const delay = (i: number) => ({ animationDelay: `${i * 90}ms` });
 
   return (
     <main className="wrap">
-      <p className="eyebrow">UHI9 · Impermanent Loss &amp; Yield · Live</p>
-      <h1>Reactive<span className="hl">Hedge</span></h1>
-      <p className="lede">
-        A Uniswap v4 hook that hedges impermanent loss <b>before the arbitrage lands</b>. Watch a price
-        move on the origin pool flow through the Reactive Smart Contract and rebalance the hedge on Base.
+      <header className="top reveal" style={delay(0)}>
+        <p className="eyebrow">UHI9 · Impermanent loss &amp; yield</p>
+        <span className={`live ${liveOk ? "" : "idle"}`}>
+          <span className="dot" /> {liveOk ? "live · on-chain" : s.configured ? "connecting" : "demo mode"}
+        </span>
+      </header>
+
+      <h1 className="reveal" style={delay(1)}>Reactive<em>Hedge</em></h1>
+      <p className="lede reveal" style={delay(2)}>
+        A Uniswap v4 hook that hedges impermanent loss <b>before the arbitrage lands</b>. A Reactive
+        Smart Contract watches the pool's price events and fires a cross-chain hedge in seconds —
+        acting in the window a hook alone is blind to.
       </p>
 
-      {!isConfigured && (
-        <div className="banner">
-          <b>Demo mode.</b> No contract addresses configured. Copy <span className="mono">.env.local.example</span> to{" "}
-          <span className="mono">.env.local</span> and fill the deployed addresses for live reads. The button below
-          animates the pipeline so the story still reads.
+      <section className="hero reveal" style={delay(3)}>
+        <div>
+          <div className="label">Impermanent loss, hedged — 30-day ETH/USDC backtest</div>
+          <div className="figure">
+            <span className="from">{(bt.unhedgedBps / 100).toFixed(2)}%</span>
+            <span className="arrow">→</span>
+            <span className="to">{(bt.hedgedBps / 100).toFixed(2)}%</span>
+          </div>
         </div>
-      )}
+        <div className="big">−{bt.reduction}%<small>vs unhedged baseline</small></div>
+      </section>
 
-      <section className="grid">
-        <div className="panel origin">
-          <span className="tag">Origin</span>
-          <div className="chain">{chainMeta.origin.name} · {chainMeta.origin.id}</div>
-          <h3>ReactiveHedgeHook</h3>
-          <div className="stat"><span className="k">POOL ID</span><span className="v">{short(config.poolId)}</span></div>
-          <div className="stat"><span className="k">HEDGE INTENT</span><span className="v">{wad(stats.hedgeIntent).toFixed(4)}</span></div>
-          <div className="stat"><span className="k">HOOK</span><span className="v">{short(config.hook)}</span></div>
-        </div>
+      <section className="pipeline reveal" style={delay(4)}>
+        <SignalFlow />
+        <div className="cols">
+          <div className="card origin">
+            <div className="role">Origin</div>
+            <div className="net">{chainMeta.origin.name} · {chainMeta.origin.id}</div>
+            <div className="name">ReactiveHedgeHook</div>
+            <div className="metric">
+              <span className="cap">Hedge intent</span>
+              <span className="v"><Roll value={s.hedgeIntent} dp={4} /></span>
+            </div>
+            <div className="stat"><span className="k">POOL</span><span className="val">{short(config.poolId)}</span></div>
+            <div className="stat"><span className="k">HOOK</span><span className="val">{short(config.hook)}</span></div>
+          </div>
 
-        <div className="panel reactive">
-          <span className="tag">Signal layer</span>
-          <div className="chain">{chainMeta.reactive.name} · {chainMeta.reactive.id}</div>
-          <h3>HedgeReactiveContract</h3>
-          <div className="stat"><span className="k">CUMULATIVE DRIFT</span><span className="v">{stats.drift.toString()} bps</span></div>
-          <div className="stat"><span className="k">THRESHOLD</span><span className="v">{stats.threshold.toString()} bps</span></div>
-          <div className="stat"><span className="k">HEDGES FIRED</span><span className="v">{stats.hedgesFired.toString()}</span></div>
-          <div className="bar"><i style={{ width: `${driftPct}%` }} /></div>
-        </div>
+          <div className="card reactive">
+            <div className="role">Signal layer</div>
+            <div className="net">{chainMeta.reactive.name} · {chainMeta.reactive.id}</div>
+            <div className="name">HedgeReactiveContract</div>
+            <div className="metric">
+              <span className="cap">Cumulative drift</span>
+              <span className="v"><Roll value={s.drift} /></span><span className="u">/ {s.threshold} bps</span>
+            </div>
+            <div className="gauge">
+              <div className="track"><i style={{ width: `${gauge}%` }} /></div>
+              <div className="ann"><span>ACCUMULATING</span><span>FIRE @ {s.threshold}</span></div>
+            </div>
+            <div className="stat"><span className="k">HEDGES FIRED</span><span className="val"><Roll value={s.hedgesFired} /></span></div>
+          </div>
 
-        <div className="panel dest">
-          <span className="tag">Destination</span>
-          <div className="chain">{chainMeta.dest.name} · {chainMeta.dest.id}</div>
-          <h3>HedgeExecutor</h3>
-          <div className="stat"><span className="k">NET HEDGE POSITION</span><span className="v">{wad(stats.netHedge).toFixed(4)}</span></div>
-          <div className="stat"><span className="k">HEDGE COUNT</span><span className="v">{stats.hedgeCount.toString()}</span></div>
-          <div className="stat"><span className="k">EXECUTOR</span><span className="v">{short(config.executor)}</span></div>
+          <div className="card dest">
+            <div className="role">Destination</div>
+            <div className="net">{chainMeta.dest.name} · {chainMeta.dest.id}</div>
+            <div className="name">HedgeExecutor</div>
+            <div className="metric">
+              <span className="cap">Net hedge position</span>
+              <span className="v"><Roll value={s.netHedge} dp={4} /></span>
+            </div>
+            <div className="stat"><span className="k">HEDGE COUNT</span><span className="val"><Roll value={s.hedgeCount} /></span></div>
+            <div className="stat"><span className="k">STATUS</span><span className="val">{liveOk ? "tracking" : "—"}</span></div>
+          </div>
         </div>
       </section>
 
-      <div className="controls">
-        <button className="cta" onClick={pushPrice} disabled={busy}>
-          {busy ? "Working…" : "↗ Push external price"}
-        </button>
-        <a className="link" href={config.reactscan} target="_blank" rel="noreferrer">
-          Reactscan ↗
-        </a>
-        {note && <span className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>{note}</span>}
+      <div className="controls reveal" style={delay(5)}>
+        <button className="btn" onClick={pushPrice} disabled={busy}>{busy ? "working…" : "↗ push external price"}</button>
+        <a className="linkout" href={config.reactscan} target="_blank" rel="noreferrer">Reactscan ↗</a>
+        {note && <span className="note">{note}</span>}
       </div>
 
-      <section className="feed">
-        <h2>Live event feed</h2>
+      {!s.configured && (
+        <div className="demo-banner reveal" style={delay(6)}>
+          <b>Demo mode.</b> No deployed addresses configured. Copy <code>.env.local.example</code> → <code>.env.local</code> and
+          fill <code>NEXT_PUBLIC_*</code> (or server <code>RPC_*</code>) to light up live reads. The button still animates the loop.
+        </div>
+      )}
+
+      <section className="tape reveal" style={delay(7)}>
+        <div className="tape-head">
+          <h2>Live event feed</h2>
+          <span className={`live ${liveOk ? "" : "idle"}`} style={{ border: "none", padding: 0 }}>
+            <span className="dot" /> {feed.length} events
+          </span>
+        </div>
         {feed.length === 0 ? (
-          <div className="empty">No events yet — push the external price to start the loop.</div>
+          <div className="tape-empty">No events yet — push the external price to start the loop.</div>
         ) : (
           feed.map((e) => (
-            <div className="row" key={e.id}>
-              <span className="evt-chain mono" style={{ color: chainMeta[e.chain].color }}>
-                <span className="dot" style={{ background: chainMeta[e.chain].color }} />
-                {e.chain}
+            <div className="tape-row" key={e.id}>
+              <span className="chip" style={{ color: chainMeta[e.chain].color }}>
+                <span className="d" style={{ background: chainMeta[e.chain].color }} />{e.chain}
               </span>
-              <span className="evt-name">{e.name}</span>
-              <span className="evt-detail">{e.detail}</span>
+              <span className="evt">{e.name}</span>
+              <span className="det">{e.detail}</span>
               <span>
                 {e.tx ? (
-                  <a className="link" href={`${config.reactscan}/tx/${e.tx}`} target="_blank" rel="noreferrer">
-                    {short(e.tx)} ↗
-                  </a>
+                  <a className="linkout" href={`${config.reactscan}/tx/${e.tx}`} target="_blank" rel="noreferrer">{short(e.tx)} ↗</a>
                 ) : (
-                  <span className="mono" style={{ color: "var(--faint)" }}>local</span>
+                  <span style={{ color: "var(--faint)" }}>local</span>
                 )}
               </span>
             </div>
@@ -218,7 +249,7 @@ export default function Dashboard() {
       </section>
 
       <footer>
-        <span>ReactiveHedge · live dashboard</span>
+        <span>ReactiveHedge · IL hedge terminal</span>
         <span>origin → reactive → destination · hedge before the arb</span>
       </footer>
     </main>
