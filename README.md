@@ -38,37 +38,53 @@ swap on Unichain → ReactiveHedgeHook emits SwapObserved
         → netHedgePosition updated, HedgeExecuted fires   ← the demo hero moment
 ```
 
-## Repo layout
+## Layout — one Next.js app + a `contracts/` Foundry project
+
+The repo root **is** the Next.js app (frontend + backend route handlers in one).
+All Solidity lives under `contracts/`.
 
 ```
-src/hooks/ReactiveHedgeHook.sol        v4 hook (Unichain Sepolia)
-src/reactive/HedgeReactiveContract.sol RSC (Reactive Lasna)
-src/destination/HedgeExecutor.sol      destination (Base Sepolia)
-src/libraries/DeltaMath.sol            pure IL / delta math (KA-tested)
-src/base/BaseHook.sol                  self-contained v4 hook base
-src/interfaces/                        shared interfaces
-script/                                deploy + pool + swap + backtest scripts
-test/                                  unit, integration (local PoolManager), fork
-frontend/                              Next.js + viem dashboard
-backtest/                              IL backtest output + chart
+app/                                   Next.js App Router
+  api/state | api/events | api/backtest  server-side viem reads (the "backend")
+  page.tsx | layout.tsx | globals.css    the dashboard + design system
+components/                            Dashboard, SignalFlow (UI)
+lib/                                   config (client) + server (server-only) + chains/abis
+contracts/                             Foundry project
+  src/hooks/ReactiveHedgeHook.sol        v4 hook (Unichain Sepolia)
+  src/reactive/HedgeReactiveContract.sol RSC (Reactive Lasna)
+  src/destination/HedgeExecutor.sol      destination (Base Sepolia)
+  src/libraries/DeltaMath.sol            pure IL / delta math (KA-tested)
+  src/base/BaseHook.sol                  self-contained v4 hook base
+  script/                                deploy + pool + swap + backtest scripts
+  test/                                  unit, integration (local PoolManager), fork
+  backtest/                              IL backtest output + chart
 ```
+
+The browser never calls an RPC directly — the `app/api/*` route handlers do all
+chain reads server-side (no CORS, optional private RPC via `RPC_*` env). The only
+client-side write is the wallet-driven "push external price" demo control.
 
 ## Prerequisites
 
 - [Foundry](https://book.getfoundry.sh/) (stable) — `forge 1.x`
-- Node 18+ (for the frontend and the backtest chart)
-- A fresh dev wallet funded on the three testnet faucets (deploys only)
+- Node 18+
 
 ## Quickstart
 
 ```bash
 git clone <this-repo> && cd ReactiveHedge
 git submodule update --init --recursive   # v4-core, v4-periphery, reactive-lib, forge-std
-forge build
-forge test                                  # 29 pass, 1 fork test skipped offline
+
+# contracts
+( cd contracts && forge build && forge test )   # 29 pass, 1 fork test skipped offline
+
+# app (frontend + backend)
+npm install
+cp .env.local.example .env.local                # blank = demo mode; fill addresses for live
+npm run dev                                       # http://localhost:3000
 ```
 
-Tech is pinned (CLAUDE.md): Solidity **0.8.26**, `evm_version = cancun`,
+Contract tech is pinned (CLAUDE.md): Solidity **0.8.26**, `evm_version = cancun`,
 `via_ir = true`. v4-core and reactive-lib are self-contained; `BaseHook` +
 `HookMiner` are vendored locally because the latest v4-periphery relocated them
 out of `src/utils/`.
@@ -86,18 +102,21 @@ ForkHookTest             Unichain Sepolia fork (skips offline) (NFR-4)
 
 ## Deploy & run the demo
 
-All addresses come from `.env` (never hardcoded). Copy `.env.example` to `.env`,
-use a **fresh** wallet, and **verify the movable addresses** (PoolManager, callback
-proxies) against the official docs before deploying.
+All addresses come from `contracts/.env` (never hardcoded). Copy
+`contracts/.env.example` to `contracts/.env`, use a **fresh** wallet, and **verify
+the movable addresses** (PoolManager, callback proxies) against the official docs
+before deploying. Run from `contracts/`:
 
 ```bash
+cd contracts
+
 # 1) Destination first (no deps)
 forge script script/DeployExecutor.s.sol --rpc-url base_sepolia --broadcast
-#    -> set EXECUTOR_ADDRESS in .env
+#    -> set EXECUTOR_ADDRESS in contracts/.env
 
 # 2) Hook — mines a CREATE2 salt so the address encodes the flags (asserts deployed==mined)
 forge script script/DeployHook.s.sol --rpc-url unichain_sepolia --broadcast
-#    -> set HOOK_ADDRESS in .env
+#    -> set HOOK_ADDRESS in contracts/.env
 
 # 3) RSC — wired to hook + executor; fund it with REACT (rule #6)
 forge script script/DeployReactive.s.sol --rpc-url reactive_lasna --broadcast
@@ -108,29 +127,39 @@ forge script script/CreatePoolAndAddLiquidity.s.sol --rpc-url unichain_sepolia -
 forge script script/Swap.s.sol --rpc-url unichain_sepolia --broadcast
 ```
 
+Then put the deployed addresses in the app's `.env.local` (root) so the dashboard
+reads them — see `.env.local.example`.
+
 **Watch it land:** after the swap, the hook emits `SwapObserved`; within seconds
 Reactscan shows the RSC's `Callback`, and `HedgeExecuted` fires on Base Sepolia.
 That round-trip on [Reactscan](https://lasna.reactscan.net) is the Day-3 rails gate
 and the demo's hero shot.
 
-## Frontend
+## The app (frontend + backend)
 
 ```bash
-cd frontend && npm install
-cp .env.local.example .env.local   # fill deployed addresses (or leave blank for demo mode)
+npm install
+cp .env.local.example .env.local   # fill addresses (or leave blank for demo mode)
 npm run dev                         # http://localhost:3000
 ```
 
-Single page: pool/hedge-intent, RSC drift vs threshold, destination hedge
-position, and a live `SwapObserved` / `Callback` / `HedgeExecuted` feed, plus a
-"Push external price" control and a Reactscan link. See [`frontend/`](frontend/).
+A single editorial-terminal page (Instrument Serif + JetBrains Mono): the backtest
+headline, an origin → reactive → destination signal flow, pool/hedge-intent, RSC
+drift vs threshold, destination hedge position, a live `SwapObserved` / `Callback`
+/ `HedgeExecuted` feed, a wallet "push external price" control, and a Reactscan
+link. The **backend** is `app/api/{state,events,backtest}` — server-side viem
+reads, so the browser never hits an RPC.
 
 ## Backtest
 
 ```bash
-forge script script/Backtest.s.sol   # headline + backtest/results.csv
-node backtest/chart.mjs               # backtest/il_chart.svg
+cd contracts
+forge script script/Backtest.s.sol   # headline + contracts/backtest/results.csv
+node backtest/chart.mjs               # contracts/backtest/il_chart.svg
 ```
+
+The dashboard's hero figure + sparkline are served from `contracts/backtest/results.csv`
+via `/api/backtest`.
 
 → **ReactiveHedge reduces IL by ~93%** over the 30-day ETH/USDC series. Full method
 and assumptions in [`backtest/README.md`](backtest/README.md).

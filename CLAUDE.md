@@ -101,16 +101,23 @@ and verify `.env` against the official sources below before any deploy.**
 
 ## Repo layout
 
+> The repo root is a single Next.js app (frontend + backend route handlers).
+> All Solidity lives under `contracts/`.
+
 ```
-src/hooks/ReactiveHedgeHook.sol        # v4 hook (Unichain Sepolia)
-src/reactive/HedgeReactiveContract.sol # RSC (Reactive Lasna)
-src/destination/HedgeExecutor.sol      # destination (Base Sepolia)
-src/libraries/DeltaMath.sol            # LP delta / IL math (pure functions, unit-tested)
-src/interfaces/                        # shared interfaces
-script/Deploy*.s.sol                   # one deploy script per contract, run in order
-script/CreatePoolAndAddLiquidity.s.sol # init pool with hook + seed liquidity
-test/                                  # fork tests (hook) + unit tests (RSC, DeltaMath)
-frontend/                              # Next.js demo dashboard (later phases)
+app/                                            # Next.js App Router (the dashboard)
+app/api/{state,events,backtest}/route.ts        # backend: server-side viem reads
+components/ , lib/                              # UI + client/server config
+contracts/src/hooks/ReactiveHedgeHook.sol       # v4 hook (Unichain Sepolia)
+contracts/src/reactive/HedgeReactiveContract.sol# RSC (Reactive Lasna)
+contracts/src/destination/HedgeExecutor.sol     # destination (Base Sepolia)
+contracts/src/libraries/DeltaMath.sol           # LP delta / IL math (pure, unit-tested)
+contracts/src/base/BaseHook.sol                 # self-contained v4 hook base (vendored)
+contracts/src/interfaces/                       # shared interfaces
+contracts/script/Deploy*.s.sol                  # one deploy script per contract, run in order
+contracts/script/CreatePoolAndAddLiquidity.s.sol# init pool with hook + seed liquidity
+contracts/test/                                 # unit + integration + (skippable) fork tests
+contracts/backtest/                             # IL backtest output + chart
 ```
 
 ## Build order (deploy dependencies flow one way)
@@ -142,10 +149,12 @@ frontend/                              # Next.js demo dashboard (later phases)
 ## When stuck, check these first
 
 - Reactive base contract API (`LogRecord`, `react`, `vmOnly`, `service`, `Callback`,
-  `REACTIVE_IGNORE`): read `lib/reactive-lib/src/abstract-base/AbstractReactive.sol` — **the
-  installed lib source always wins over any example in our docs.**
-- v4 hook patterns: `lib/v4-periphery/src/utils/BaseHook.sol` and the template's example hook.
-- HookMiner usage: `lib/v4-periphery/src/utils/HookMiner.sol`.
+  `REACTIVE_IGNORE`): read `contracts/lib/reactive-lib/src/abstract-base/AbstractReactive.sol` —
+  **the installed lib source always wins over any example in our docs.**
+- v4 hook patterns: our vendored `contracts/src/base/BaseHook.sol` (the latest
+  v4-periphery removed BaseHook from `src/utils/`, so it is self-contained against
+  `contracts/lib/v4-core` v4.0.0).
+- HookMiner usage: `contracts/test/utils/HookMiner.sol` (vendored locally).
 
 ## Out of scope for the MVP (do not build unless explicitly asked)
 
