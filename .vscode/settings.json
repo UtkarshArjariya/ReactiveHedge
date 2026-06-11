@@ -1,0 +1,30 @@
+{
+  "//": "Keep editors out of the vendored submodule deps. Those nested lib/ trees contain other projects' hardhat.config.js (e.g. openzeppelin-contracts) with no node_modules, which the Hardhat/Solidity extension otherwise tries (and fails) to initialize. Our own contracts only import contracts/lib/<dep>/src/*, never these nested lib/ dirs.",
+  "wake.compiler.solc.remappings": [
+    "forge-std/=contracts/lib/forge-std/src/",
+    "v4-core/=contracts/lib/v4-core/",
+    "@uniswap/v4-core/=contracts/lib/v4-core/",
+    "v4-periphery/=contracts/lib/v4-periphery/",
+    "@uniswap/v4-periphery/=contracts/lib/v4-periphery/",
+    "reactive-lib/=contracts/lib/reactive-lib/",
+    "@reactive/=contracts/lib/reactive-lib/"
+  ],
+  "files.exclude": {
+    "**/.forge-snapshots": true,
+    "contracts/lib/*/lib": true
+  },
+  "search.exclude": {
+    "contracts/lib": true,
+    "node_modules": true,
+    ".next": true,
+    "contracts/out": true,
+    "contracts/cache": true
+  },
+  "files.watcherExclude": {
+    "**/contracts/lib/**": true,
+    "**/node_modules/**": true,
+    "**/.next/**": true,
+    "**/contracts/out/**": true,
+    "**/contracts/cache/**": true
+  }
+}

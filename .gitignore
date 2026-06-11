@@ -20,7 +20,10 @@ contracts/broadcast/*/31337/
 contracts/broadcast/**/dry-run/
 
 # ── Editors / OS ─────────────────────────────────────────────────────────────
-.vscode/
+# Track project-level editor config (excludes vendored submodule libs), ignore the rest.
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .idea/
 .DS_Store
 *.log
