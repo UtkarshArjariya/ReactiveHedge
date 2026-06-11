@@ -43,10 +43,46 @@ function Roll({ value, dp = 0 }: { value: number; dp?: number }) {
   return <>{shown.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp })}</>;
 }
 
+type Row = { day: number; unhedged_bps: number; hedged_bps: number };
+
+/** Tiny area sparkline: unhedged vs hedged cumulative IL over the backtest. */
+function SparkIL({ rows }: { rows: Row[] }) {
+  if (!rows.length) return null;
+  const W = 460, H = 64;
+  const max = Math.max(...rows.map((r) => Math.max(r.unhedged_bps, r.hedged_bps)), 1);
+  const n = rows.length - 1 || 1;
+  const x = (i: number) => (i / n) * W;
+  const y = (b: number) => H - 4 - (b / max) * (H - 8);
+  const line = (k: "unhedged_bps" | "hedged_bps") =>
+    rows.map((r, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(r[k]).toFixed(1)}`).join(" ");
+  const area = (k: "unhedged_bps" | "hedged_bps") => `${line(k)} L${W},${H} L0,${H} Z`;
+  return (
+    <div className="spark">
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" aria-hidden>
+        <defs>
+          <linearGradient id="uh" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--origin)" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="var(--origin)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={area("unhedged_bps")} fill="url(#uh)" />
+        <path d={line("unhedged_bps")} fill="none" stroke="var(--origin)" strokeWidth="1.5" />
+        <path d={line("hedged_bps")} fill="none" stroke="var(--reactive)" strokeWidth="1.5" />
+      </svg>
+      <div className="legend">
+        <span><i style={{ background: "var(--origin)" }} />unhedged</span>
+        <span><i style={{ background: "var(--reactive)" }} />reactivehedge</span>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [s, setS] = useState<State>(Z);
   const [feed, setFeed] = useState<Feed[]>([]);
-  const [bt, setBt] = useState({ unhedgedBps: 202, hedgedBps: 14, reduction: 93 });
+  const [bt, setBt] = useState<{ unhedgedBps: number; hedgedBps: number; reduction: number; rows: Row[] }>({
+    unhedgedBps: 202, hedgedBps: 14, reduction: 93, rows: [],
+  });
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const [liveOk, setLiveOk] = useState(false);
@@ -61,7 +97,7 @@ export default function Dashboard() {
   useEffect(() => {
     fetch("/api/backtest")
       .then((r) => r.json())
-      .then((d) => setBt({ unhedgedBps: d.unhedgedBps, hedgedBps: d.hedgedBps, reduction: d.reduction }))
+      .then((d) => setBt({ unhedgedBps: d.unhedgedBps, hedgedBps: d.hedgedBps, reduction: d.reduction, rows: d.rows || [] }))
       .catch(() => {});
   }, []);
 
@@ -158,6 +194,7 @@ export default function Dashboard() {
             <span className="arrow">→</span>
             <span className="to">{(bt.hedgedBps / 100).toFixed(2)}%</span>
           </div>
+          <SparkIL rows={bt.rows} />
         </div>
         <div className="big">−{bt.reduction}%<small>vs unhedged baseline</small></div>
       </section>
