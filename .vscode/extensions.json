@@ -1,0 +1,10 @@
+{
+  "//": "This is a Foundry project. Use the Wake (ackee) Solidity LSP. The Nomic 'Hardhat + Solidity' extension is built for Hardhat projects and chokes on our vendored submodule tree, so it's marked unwanted here — disable it for this workspace.",
+  "recommendations": [
+    "ackeeblockchain.tools-for-solidity"
+  ],
+  "unwantedRecommendations": [
+    "nomicfoundation.hardhat-solidity",
+    "juanblanco.solidity"
+  ]
+}
