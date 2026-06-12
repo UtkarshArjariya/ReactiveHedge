@@ -26,6 +26,8 @@ contract ReactiveHedgeHook is BaseHook, IReactiveHedgeHook {
     error NotCallbackProxy();
     /// @notice Thrown when a rebalance callback carries an unauthorized RVM id.
     error UnauthorizedRvm();
+    /// @notice Thrown when a critical address argument is the zero address.
+    error ZeroAddress();
 
     /// @notice Reactive callback proxy on this chain (Unichain Sepolia).
     address public immutable callbackProxy;
@@ -49,6 +51,10 @@ contract ReactiveHedgeHook is BaseHook, IReactiveHedgeHook {
     constructor(IPoolManager _poolManager, address _callbackProxy, address _authorizedRvmId)
         BaseHook(_poolManager)
     {
+        // Proxy and the initial RVM id must be set: the deploy script seeds the RVM
+        // id with the deployer EOA (a non-zero placeholder) and rewires it later via
+        // {setAuthorizedRvmId}, so zero is never a legitimate value here.
+        if (_callbackProxy == address(0) || _authorizedRvmId == address(0)) revert ZeroAddress();
         callbackProxy = _callbackProxy;
         authorizedRvmId = _authorizedRvmId;
         owner = msg.sender;
@@ -75,8 +81,13 @@ contract ReactiveHedgeHook is BaseHook, IReactiveHedgeHook {
     }
 
     /// @notice Update the authorized RVM id once the RSC is deployed.
+    /// @dev Owner-only. Reverts on the zero address and emits {AuthorizedRvmIdUpdated}
+    ///      so off-chain indexers and the frontend can track the security-critical
+    ///      authorization (CLAUDE.md hard rule #2).
     function setAuthorizedRvmId(address _rvmId) external {
         require(msg.sender == owner, "only owner");
+        if (_rvmId == address(0)) revert ZeroAddress();
+        emit AuthorizedRvmIdUpdated(authorizedRvmId, _rvmId);
         authorizedRvmId = _rvmId;
     }
 
