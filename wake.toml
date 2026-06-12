@@ -1,0 +1,37 @@
+[compiler.solc]
+target_version = "0.8.26"
+evm_version = "cancun"
+via_IR = true
+# Full set mirrors `forge remappings` (incl. nested deps Foundry auto-resolves but
+# Wake does not), with each target prefixed by contracts/ since Wake runs from root.
+remappings = [
+    "forge-std/=contracts/lib/forge-std/src/",
+    "v4-core/=contracts/lib/v4-core/",
+    "@uniswap/v4-core/=contracts/lib/v4-core/",
+    "v4-periphery/=contracts/lib/v4-periphery/",
+    "@uniswap/v4-periphery/=contracts/lib/v4-periphery/",
+    "reactive-lib/=contracts/lib/reactive-lib/",
+    "@reactive/=contracts/lib/reactive-lib/",
+    "@ensdomains/=contracts/lib/v4-core/node_modules/@ensdomains/",
+    "@openzeppelin/=contracts/lib/v4-core/lib/openzeppelin-contracts/",
+    "ds-test/=contracts/lib/v4-core/lib/forge-std/lib/ds-test/src/",
+    "erc4626-tests/=contracts/lib/v4-core/lib/openzeppelin-contracts/lib/erc4626-tests/",
+    "forge-gas-snapshot/=contracts/lib/v4-periphery/lib/permit2/lib/forge-gas-snapshot/src/",
+    "hardhat/=contracts/lib/v4-core/node_modules/hardhat/",
+    "openzeppelin-contracts/=contracts/lib/v4-core/lib/openzeppelin-contracts/",
+    "permit2/=contracts/lib/v4-periphery/lib/permit2/",
+    "solmate/=contracts/lib/v4-core/lib/solmate/",
+]
+allow_paths = ["contracts/lib"]
+exclude_paths = ["node_modules", ".next", "contracts/lib", "contracts/out", "contracts/cache"]
+
+[compiler.solc.optimizer]
+enabled = true
+runs = 200
+
+# Detectors run on src/ only. test/ and script/ stay COMPILED (so library usage is
+# visible and nothing is falsely "unused"), but are excluded from detector REPORTING
+# along with the vendored tree — that test/script helper noise was the leftover errors.
+[detectors]
+exclude_paths = ["node_modules", ".next", "contracts/lib", "contracts/out", "contracts/cache", "contracts/test", "contracts/script"]
+ignore_paths  = ["node_modules", ".next", "contracts/lib", "contracts/out", "contracts/cache", "contracts/test", "contracts/script"]
