@@ -27,8 +27,10 @@ export async function GET() {
       hedgedBps: last?.hedged_bps ?? 0,
       reduction,
     });
-  } catch {
-    // Backtest not run yet — return a sane default so the UI still renders.
-    return NextResponse.json({ rows: [], unhedgedBps: 202, hedgedBps: 14, reduction: 93, stale: true });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: e?.message || "contracts/backtest/results.csv could not be read" },
+      { status: 500 },
+    );
   }
 }
