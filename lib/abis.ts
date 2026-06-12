@@ -55,7 +55,7 @@ export const executorAbi = [
   },
 ] as const;
 
-// PoolSwapTest.swap — used by the "push external price" demo control (FR-23).
+// PoolSwapTest.swap — used by the "fire real test swap" control (FR-23).
 export const swapRouterAbi = [
   {
     type: "function", name: "swap", stateMutability: "payable",
