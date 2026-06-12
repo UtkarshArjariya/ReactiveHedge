@@ -23,6 +23,9 @@ interface IReactiveHedgeHook {
     /// @notice Emitted when a Reactive rebalance callback is applied to in-pool hedge intent.
     event RebalanceExecuted(address indexed rvmId, bytes32 indexed poolId, int256 hedgeDelta, int256 newIntent);
 
+    /// @notice Emitted when the owner updates the authorized RVM id (post-deploy wiring).
+    event AuthorizedRvmIdUpdated(address indexed previous, address indexed current);
+
     /// @notice Reactive callback entry point for the in-pool rebalance path.
     /// @param rvmId Reactive-injected originating RVM id (first arg).
     /// @param poolId The pool to rebalance.
