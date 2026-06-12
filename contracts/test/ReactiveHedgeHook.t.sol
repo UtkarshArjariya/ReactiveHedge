@@ -3,6 +3,7 @@ pragma solidity 0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 import {ReactiveHedgeHook} from "../src/hooks/ReactiveHedgeHook.sol";
+import {IReactiveHedgeHook} from "../src/interfaces/IReactiveHedgeHook.sol";
 import {HookMiner} from "./utils/HookMiner.sol";
 import {Hooks} from "v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
@@ -57,5 +58,25 @@ contract ReactiveHedgeHookTest is Test {
         vm.prank(callbackProxy);
         vm.expectRevert(ReactiveHedgeHook.UnauthorizedRvm.selector);
         hook.onReactiveRebalance(makeAddr("notRvm"), keccak256("p"), 1e18);
+    }
+
+    function test_SetAuthorizedRvmId_UpdatesAndEmits() public {
+        address newRvm = makeAddr("newRvm");
+        // owner == address(this) (the deployer in setUp).
+        vm.expectEmit(true, true, false, false, address(hook));
+        emit IReactiveHedgeHook.AuthorizedRvmIdUpdated(rvmId, newRvm);
+        hook.setAuthorizedRvmId(newRvm);
+        assertEq(hook.authorizedRvmId(), newRvm);
+    }
+
+    function test_RevertWhen_SetAuthorizedRvmIdZero() public {
+        vm.expectRevert(ReactiveHedgeHook.ZeroAddress.selector);
+        hook.setAuthorizedRvmId(address(0));
+    }
+
+    function test_RevertWhen_SetAuthorizedRvmIdNotOwner() public {
+        vm.prank(makeAddr("attacker"));
+        vm.expectRevert(bytes("only owner"));
+        hook.setAuthorizedRvmId(makeAddr("newRvm"));
     }
 }
