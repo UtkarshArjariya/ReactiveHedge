@@ -19,6 +19,13 @@ contracts/.forge-snapshots/
 contracts/broadcast/*/31337/
 contracts/broadcast/**/dry-run/
 
+# ── Solidity LSP (Wake) ──────────────────────────────────────────────────────
+# wake.toml is tracked (project config); .wake/ is its local build cache.
+.wake/
+
+# Local agent tooling state.
+.commandcode/
+
 # ── Editors / OS ─────────────────────────────────────────────────────────────
 # Track project-level editor config (excludes vendored submodule libs), ignore the rest.
 .vscode/*
