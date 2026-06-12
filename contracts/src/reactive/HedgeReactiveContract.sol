@@ -99,7 +99,11 @@ contract HedgeReactiveContract is AbstractReactive {
         if (last == 0) return;
 
         // Signed sqrt-price move in bps relative to the last observation.
-        int256 stepBps = ((int256(uint256(sqrtPriceX96)) - int256(uint256(last))) * 10_000) / int256(uint256(last));
+        // Safe: sqrtPriceX96/last are uint160, so the uint->int casts can't overflow.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 stepBps = ((int256(uint256(sqrtPriceX96)) - int256(uint256(last))) * 1e4) / int256(uint256(last));
+        // Safe: each branch casts a value already proven non-negative (abs of stepBps).
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 absStep = stepBps >= 0 ? uint256(stepBps) : uint256(-stepBps);
         cumulativeDrift += absStep;
 
@@ -107,6 +111,9 @@ contract HedgeReactiveContract is AbstractReactive {
 
         // Threshold crossed — size the hedge to accumulated drift, opposing the
         // latest move (price up => short, price down => long). bps -> WAD: *1e14.
+        // Safe: cumulativeDrift resets at driftThreshold (a small bps value), so it
+        // is orders of magnitude below int256.max even after the *1e14 scaling.
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 magnitude = int256(cumulativeDrift) * 1e14;
         int256 hedgeDelta = stepBps >= 0 ? -magnitude : magnitude;
 
