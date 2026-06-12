@@ -88,6 +88,8 @@ contract Backtest is Script {
     function ilBps(uint256 numer, uint256 denom) internal pure returns (uint256) {
         uint256 ratioWad = numer * WAD / denom;
         int256 il = DeltaMath.impermanentLoss(ratioWad); // <= 0
+        // Safe: impermanentLoss returns <= 0, so -il is non-negative.
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 mag = uint256(-il); // WAD magnitude
         return mag * 10_000 / WAD; // -> bps
     }
