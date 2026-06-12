@@ -1,56 +1,93 @@
-// Animated cross-chain signal band: origin → reactive → destination, with a
-// pulse that travels the path on a loop. CSS/SMIL only — no client JS needed.
-export default function SignalFlow() {
-  const stops = [
-    { x: 90, label: "event log", color: "var(--origin)" },
-    { x: 540, label: "react()", color: "var(--reactive)" },
-    { x: 990, label: "callback", color: "var(--dest)" },
-  ];
+import { type CSSProperties } from "react";
+import { chainMeta } from "../lib/config";
+
+export type SignalStage = "idle" | "observed" | "reacting" | "executed";
+
+type SignalFlowProps = {
+  stage: SignalStage;
+  latency: string;
+  paused: boolean;
+  demoMode: boolean;
+  replayNonce: number;
+};
+
+const stations = [
+  {
+    id: "observed",
+    chain: "origin",
+    title: "UNICHAIN SEPOLIA",
+    event: "SwapObserved",
+    metric: "pool drift +1.9%",
+    tx: "tx 0x... ↗",
+  },
+  {
+    id: "reacting",
+    chain: "reactive",
+    title: "REACTIVE LASNA",
+    event: "react() · drift↑",
+    metric: "drift > threshold ✓",
+    tx: "callback armed",
+  },
+  {
+    id: "executed",
+    chain: "dest",
+    title: "BASE SEPOLIA",
+    event: "HedgeExecuted",
+    metric: "netHedge +0.29",
+    tx: "tx 0x... ↗",
+  },
+] as const;
+
+export default function SignalFlow({ stage, latency, paused, demoMode, replayNonce }: SignalFlowProps) {
   return (
-    <svg viewBox="0 0 1080 96" width="100%" height="96" role="img" aria-label="cross-chain signal flow" style={{ display: "block" }}>
-      <defs>
-        <linearGradient id="rail" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="var(--origin)" />
-          <stop offset="50%" stopColor="var(--reactive)" />
-          <stop offset="100%" stopColor="var(--dest)" />
-        </linearGradient>
-        <path id="flowpath" d="M90,40 H990" />
-        <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="3" />
-        </filter>
-      </defs>
+    <div
+      className={`signal-flow stage-${stage} ${paused ? "is-paused" : ""}`}
+      aria-label="Cross-chain signal flow from Unichain Sepolia through Reactive Lasna to Base Sepolia"
+    >
+      <div className="signal-status">
+        <span>{demoMode ? "animated demo loop" : "live event stream"}</span>
+        <strong>{stage === "idle" ? "Listening for swaps..." : `${stage} · ${latency}`}</strong>
+      </div>
 
-      <line x1="90" y1="40" x2="990" y2="40" stroke="url(#rail)" strokeWidth="1.5" opacity="0.85" />
-      <line x1="90" y1="40" x2="990" y2="40" stroke="var(--reactive)" strokeWidth="2"
-        strokeDasharray="2 11" strokeLinecap="round" opacity="0.9">
-        <animate attributeName="stroke-dashoffset" from="0" to="-52" dur="1.3s" repeatCount="indefinite" />
-      </line>
+      <div className="signal-rail" aria-hidden="true">
+        <span className="rail-line" />
+        <span className="rail-shimmer" />
+        <span className="signal-packet" key={replayNonce} />
+      </div>
 
-      {stops.map((s) => (
-        <g key={s.label}>
-          <circle cx={s.x} cy={40} r="6" fill="var(--bg)" stroke={s.color} strokeWidth="1.5" />
-          <circle cx={s.x} cy={40} r="2.5" fill={s.color} />
-          <text x={s.x} y={70} fill="var(--faint)" fontSize="10.5" textAnchor="middle"
-            fontFamily="var(--mono)" letterSpacing="1.2" style={{ textTransform: "uppercase" }}>
-            {s.label}
-          </text>
-        </g>
-      ))}
+      <div className="station-grid">
+        {stations.map((station) => {
+          const active =
+            stage === station.id ||
+            (stage === "executed" && station.id !== "observed") ||
+            (stage === "reacting" && station.id === "observed");
+          const complete =
+            stage === "executed" ||
+            (stage === "reacting" && station.id === "observed") ||
+            (stage === "observed" && station.id === "observed");
 
-      {/* traveling pulse — glow halo + core */}
-      <circle r="9" fill="var(--reactive)" opacity="0.5" filter="url(#soft)">
-        <animateMotion dur="4.4s" repeatCount="indefinite" keyPoints="0;0.5;1" keyTimes="0;0.5;1" calcMode="linear">
-          <mpath href="#flowpath" />
-        </animateMotion>
-        <animate attributeName="fill" values="var(--origin);var(--reactive);var(--dest)" dur="4.4s" repeatCount="indefinite" />
-      </circle>
-      <circle r="5" fill="var(--reactive)">
-        <animateMotion dur="4.4s" repeatCount="indefinite" keyPoints="0;0.5;1" keyTimes="0;0.5;1" calcMode="linear">
-          <mpath href="#flowpath" />
-        </animateMotion>
-        <animate attributeName="fill" values="var(--origin);var(--reactive);var(--dest)" dur="4.4s" repeatCount="indefinite" />
-        <animate attributeName="r" values="4;6;4" dur="4.4s" repeatCount="indefinite" />
-      </circle>
-    </svg>
+          return (
+            <article
+              className={`station ${active ? "is-active" : ""} ${complete ? "is-complete" : ""}`}
+              key={station.id}
+              style={{ "--chain": chainMeta[station.chain].color } as CSSProperties}
+            >
+              <span className="station-dot" />
+              <div>
+                <h3>{station.title}</h3>
+                <strong>{station.event}</strong>
+                <span>{station.metric}</span>
+                <small>{station.tx}</small>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      <div className="latency-readout">
+        <span>reactive latency</span>
+        <strong>{latency}</strong>
+      </div>
+    </div>
   );
 }
