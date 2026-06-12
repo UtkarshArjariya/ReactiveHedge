@@ -37,6 +37,12 @@ export async function GET() {
       hedgeCount: hedgeCount.toString(),
       lastHedgeBlock: lastHedgeBlock.toString(),
       hedgeIntent: hedgeIntent.toString(),
+      addresses: {
+        hook: serverConfig.hook,
+        rsc: serverConfig.rsc,
+        executor: serverConfig.executor,
+        poolId: serverConfig.poolId,
+      },
     });
   } catch (e: any) {
     return NextResponse.json({ configured: true, error: e?.shortMessage || e?.message || "read failed" }, { status: 502 });
