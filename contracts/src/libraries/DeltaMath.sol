@@ -34,6 +34,9 @@ library DeltaMath {
         // Reasonable testnet ranges keep these within uint256 (see overflow note).
         uint256 amount0 = (l * Q96) / sp;
         uint256 amount1 = (l * sp) / Q96;
+        // Safe: with uint128 liquidity and testnet price ranges, both amounts stay
+        // far below int256.max (l*Q96 <= ~2.7e67 << 5.7e76); see the overflow note above.
+        // forge-lint: disable-next-line(unsafe-typecast)
         return (int256(amount0), int256(amount1));
     }
 
@@ -59,6 +62,8 @@ library DeltaMath {
         uint256 numerator = 2 * sqrtRatioWad; // 2*sqrt(r), WAD
         uint256 denominator = UWAD + priceRatioWad; // 1 + r, WAD
         uint256 ratioWad = (numerator * UWAD) / denominator; // V_lp / V_hodl, WAD
+        // Safe: ratioWad = 2*sqrt(r)/(1+r) is in (0, 1e18], well below int256.max.
+        // forge-lint: disable-next-line(unsafe-typecast)
         il = int256(ratioWad) - WAD;
     }
 
