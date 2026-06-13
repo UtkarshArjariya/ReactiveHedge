@@ -24,7 +24,7 @@ export const config = {
 export const canSwap = Boolean(config.swapRouter && config.currency0 && config.currency1 && config.hook);
 
 export const chainMeta = {
-  origin: { name: "Unichain Sepolia", id: 1301, color: "var(--leak)", explorer: "https://sepolia.uniscan.xyz" },
+  origin: { name: "Unichain Sepolia", id: 1301, color: "var(--drift)", explorer: "https://sepolia.uniscan.xyz" },
   reactive: { name: "Reactive Lasna", id: 5318007, color: "var(--ash)", explorer: config.reactscan },
   dest: { name: "Base Sepolia", id: 84532, color: "var(--hedge)", explorer: "https://sepolia.basescan.org" },
 } as const;
