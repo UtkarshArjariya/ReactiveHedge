@@ -35,3 +35,4 @@ contracts/broadcast/**/dry-run/
 .DS_Store
 *.log
 docs/
+broadcast/
