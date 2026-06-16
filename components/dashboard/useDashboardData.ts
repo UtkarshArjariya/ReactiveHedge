@@ -18,6 +18,7 @@ export type FeedEvent = {
   detail: string;
   tx?: string;
   block?: string;
+  price?: string; // raw sqrtPriceX96 (SwapObserved only) — drives the live drift meter
   receivedAt: number;
 };
 
@@ -97,13 +98,14 @@ type ApiState = {
   lastHedgeBlock?: string;
   addresses?: { hook?: string; rsc?: string; executor?: string; poolId?: string };
 };
-type ApiEvents = { configured?: boolean; events?: Array<{ chain?: ChainKey; name?: string; detail?: string; tx?: string; block?: string }> };
+type ApiEvents = { configured?: boolean; events?: Array<{ chain?: ChainKey; name?: string; detail?: string; tx?: string; block?: string; price?: string }> };
 
 type LiveSnapshot = {
   configured: boolean;
   drift: number | null;
   threshold: number | null;
   hedgesFired: number | null;
+  hedgeCount: number | null; // executor.hedgeCount on Base — the REAL count (hedgesFired lives in unreadable ReactVM storage)
   netHedge: number | null;
   hedgeIntent: number | null;
 };
@@ -113,6 +115,7 @@ const EMPTY_SNAPSHOT: LiveSnapshot = {
   drift: null,
   threshold: null,
   hedgesFired: null,
+  hedgeCount: null,
   netHedge: null,
   hedgeIntent: null,
 };
@@ -188,6 +191,17 @@ export function useDashboardData(): { view: DashboardView; actions: DashboardAct
   const [demoMode, setDemoMode] = useState<boolean | undefined>(undefined);
   const [demo, setDemo] = useState<DemoSnap | null>(null);
 
+  // Live drift, derived client-side from the real SwapObserved price series. The
+  // RSC's cumulativeDrift lives in ReactVM storage (unreadable via RPC), so we
+  // mirror its math here: accumulate |Δ sqrtPrice| in bps across new swaps and
+  // reset when a real hedge lands on Base (executor.hedgeCount increments).
+  const [liveDriftBps, setLiveDriftBps] = useState(0);
+  const [justHedgedAt, setJustHedgedAt] = useState(0); // ms timestamp of the last observed hedge → drives the hero pulse
+  const seenSwapsRef = useRef<Set<string>>(new Set());
+  const lastPriceRef = useRef<bigint | null>(null);
+  const prevHedgeCountRef = useRef<number | null>(null);
+  const driftSeededRef = useRef(false);
+
   const [refreshNonce, setRefreshNonce] = useState(0);
 
   // wallet (live "fire test swap" action only)
@@ -231,6 +245,7 @@ export function useDashboardData(): { view: DashboardView; actions: DashboardAct
           drift: numeric(data.drift),
           threshold: numeric(data.threshold),
           hedgesFired: numeric(data.hedgesFired),
+          hedgeCount: numeric(data.hedgeCount),
           netHedge: wad(data.netHedge),
           hedgeIntent: wad(data.hedgeIntent),
         });
@@ -259,6 +274,7 @@ export function useDashboardData(): { view: DashboardView; actions: DashboardAct
             detail: e.detail || "event received",
             tx: e.tx,
             block: e.block,
+            price: e.price,
             receivedAt: now - i * 1000,
           })),
         );
@@ -370,6 +386,53 @@ export function useDashboardData(): { view: DashboardView; actions: DashboardAct
       cancelAnimationFrame(raf);
     };
   }, [demoMode]);
+
+  // ── Live drift accumulator (mirrors the RSC, fed by real swap prices) ──
+  useEffect(() => {
+    if (demoMode !== false) return;
+
+    // Reset when a real hedge lands on Base (the RSC zeroes cumulativeDrift then too).
+    const hc = snapshot.hedgeCount;
+    if (hc !== null) {
+      if (prevHedgeCountRef.current === null) prevHedgeCountRef.current = hc;
+      else if (hc > prevHedgeCountRef.current) {
+        prevHedgeCountRef.current = hc;
+        lastPriceRef.current = null; // restart the step baseline from the next swap
+        setLiveDriftBps(0);
+        setJustHedgedAt(Date.now()); // real hedge landed → fire the hero pulse
+      }
+    }
+
+    const swapsOldestFirst = events.filter((e) => e.name === "SwapObserved" && e.price).reverse();
+    if (swapsOldestFirst.length === 0) return;
+
+    // First pass: seed "seen" with whatever history is already on-chain so the meter
+    // starts at 0 and only climbs from swaps that arrive while the page is open.
+    if (!driftSeededRef.current) {
+      driftSeededRef.current = true;
+      for (const s of swapsOldestFirst) seenSwapsRef.current.add(s.tx || s.id);
+      lastPriceRef.current = BigInt(swapsOldestFirst[swapsOldestFirst.length - 1].price!);
+      return;
+    }
+
+    let added = 0;
+    for (const s of swapsOldestFirst) {
+      const key = s.tx || s.id;
+      const price = BigInt(s.price!);
+      if (seenSwapsRef.current.has(key)) {
+        lastPriceRef.current = price;
+        continue;
+      }
+      seenSwapsRef.current.add(key);
+      const last = lastPriceRef.current;
+      if (last !== null && last > 0n) {
+        const stepBps = Number(((price - last) * 10_000n) / last);
+        added += Math.abs(stepBps);
+      }
+      lastPriceRef.current = price;
+    }
+    if (added > 0) setLiveDriftBps((v) => v + added);
+  }, [events, snapshot.hedgeCount, demoMode]);
 
   // ── Wallet plumbing (live action) ──
   const refreshWallet = useCallback(async () => {
@@ -504,8 +567,13 @@ export function useDashboardData(): { view: DashboardView; actions: DashboardAct
     }
 
     // LIVE
-    const stage = liveStage(events, snapshot);
-    const ratio = snapshot.threshold && snapshot.drift !== null ? snapshot.drift / snapshot.threshold : 0;
+    const justHedged = justHedgedAt > 0 && Date.now() - justHedgedAt < 9000;
+    const stage = justHedged ? "hedged" : liveStage(events, snapshot);
+    const threshold = snapshot.threshold ?? 50;
+    // Drift is derived from the live swap price series (ReactVM storage is unreadable);
+    // fall back to any RSC-reported value if present.
+    const driftBps = snapshot.configured ? (snapshot.drift && snapshot.drift > 0 ? snapshot.drift : liveDriftBps) : null;
+    const ratio = driftBps !== null && threshold ? driftBps / threshold : 0;
     const clamped = Math.max(0, Math.min(1, ratio));
     const fired = stage === "hedged";
     const ilBps = !snapshot.configured ? null : fired ? IL_HEDGED_BPS : clamped * IL_PEAK_BPS;
@@ -528,10 +596,10 @@ export function useDashboardData(): { view: DashboardView; actions: DashboardAct
       positionValue: ilBps === null ? null : BASE_NOTIONAL * (1 - ilBps / 10_000),
       positionEth: snapshot.configured ? 12.5 : null,
       ilBps,
-      hedgesFired: snapshot.hedgesFired,
+      hedgesFired: snapshot.hedgeCount ?? snapshot.hedgesFired,
       netHedge: snapshot.netHedge,
-      driftBps: snapshot.drift,
-      thresholdBps: snapshot.threshold,
+      driftBps,
+      thresholdBps: threshold,
       driftRatio: clamped,
       crossed: clamped >= 1,
       fired,
@@ -544,7 +612,7 @@ export function useDashboardData(): { view: DashboardView; actions: DashboardAct
       eventsError,
       backtestError,
     };
-  }, [demoMode, demo, snapshot, events, backtest, stateStatus, eventsStatus, backtestStatus, stateError, eventsError, backtestError]);
+  }, [demoMode, demo, snapshot, events, liveDriftBps, justHedgedAt, backtest, stateStatus, eventsStatus, backtestStatus, stateError, eventsError, backtestError]);
 
   const actions: DashboardActions = {
     retry,
