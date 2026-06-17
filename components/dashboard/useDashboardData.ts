@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createWalletClient, custom, formatEther, type Address, type Hex } from "viem";
+import { createPublicClient, createWalletClient, custom, formatEther, type Address, type Hex } from "viem";
 import { swapRouterAbi } from "../../lib/abis";
 import { unichainSepolia } from "../../lib/chains";
 import { canSwap, chainMeta, config } from "../../lib/config";
@@ -210,6 +210,7 @@ export function useDashboardData(): { view: DashboardView; actions: DashboardAct
   const [walletError, setWalletError] = useState<string>();
   const [fireBusy, setFireBusy] = useState(false);
   const [actionMessage, setActionMessage] = useState<string>();
+  const swapDirRef = useRef(true); // alternate swap direction each click (mirrors FireDrift)
 
   // ── Backtest (file-backed; works regardless of chain env) ──
   const fetchBacktest = useCallback(async () => {
@@ -493,16 +494,38 @@ export function useDashboardData(): { view: DashboardView; actions: DashboardAct
     setFireBusy(true);
     try {
       const walletClient = createWalletClient({ chain: unichainSepolia, transport: custom(window.ethereum) });
-      const key = { currency0: config.currency0!, currency1: config.currency1!, fee: 3000, tickSpacing: 60, hooks: config.hook! };
-      const params = { zeroForOne: true, amountSpecified: -1_000_000_000_000_000n, sqrtPriceLimitX96: 4295128740n };
+      const publicClient = createPublicClient({ chain: unichainSepolia, transport: custom(window.ethereum) });
 
-      await walletClient.writeContract({
-        account,
-        address: config.currency0!,
+      // Alternate direction each click so repeated swaps oscillate the price (piling up
+      // absolute drift) instead of draining one side toward the price limit.
+      const zeroForOne = swapDirRef.current;
+      swapDirRef.current = !swapDirRef.current;
+      const MIN_LIMIT = 4295128740n; // MIN_SQRT_PRICE + 1
+      const MAX_LIMIT = 1461446703485210103287273052203988822378723970341n; // MAX_SQRT_PRICE - 1
+      const sellToken = (zeroForOne ? config.currency0 : config.currency1)!;
+      const AMOUNT = 5_000_000_000_000_000_000n; // 5 tokens exact-input → ~20–40 bps/click (2 clicks clears 50 bps)
+
+      const key = { currency0: config.currency0!, currency1: config.currency1!, fee: 3000, tickSpacing: 60, hooks: config.hook! };
+      const params = { zeroForOne, amountSpecified: -AMOUNT, sqrtPriceLimitX96: zeroForOne ? MIN_LIMIT : MAX_LIMIT };
+
+      // Approve the sell token once (skip if the router already has enough allowance).
+      const allowance = (await publicClient.readContract({
+        address: sellToken,
         abi: swapRouterAbi,
-        functionName: "approve",
-        args: [config.swapRouter!, 2n ** 255n],
-      });
+        functionName: "allowance",
+        args: [account, config.swapRouter!],
+      })) as bigint;
+      if (allowance < AMOUNT) {
+        const approveTx = await walletClient.writeContract({
+          account,
+          address: sellToken,
+          abi: swapRouterAbi,
+          functionName: "approve",
+          args: [config.swapRouter!, 2n ** 255n],
+        });
+        await publicClient.waitForTransactionReceipt({ hash: approveTx });
+      }
+
       const tx = await walletClient.writeContract({
         account,
         address: config.swapRouter!,
